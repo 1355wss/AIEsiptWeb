@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ΔE* prediction for ESIPT molecules</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="text/javascript" src="https://unpkg.com/jsme-editor@latest/jsme.nocache.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Δ<i>E</I>* prediction for ESIPT molecules</h1>
+
+    <div class="card">
+      <h2>Upload ESIPT Molecular data file (.csv)</h2>
+      <h3>The data file must be be a CSV file with a header row. For example:</h3>
+      <h4>smiles<br>CCC<br>CCN</h4>
+      <style>
+        #multiFileInput {
+          display: none;
+          /* 隐藏默认按钮 */
+        }
+      
+        .custom-file-label {
+          display: inline-block;
+          padding: 8px 16px;
+          background-color: #4CAF50;
+          color: white;
+          cursor: pointer;
+          border-radius: 4px;
+          font-size: 14px;
+        }
+      
+        #fileNameDisplay {
+          margin-left: 10px;
+          font-style: italic;
+          color: #555;
+        }
+      </style>
+      
+      <!-- 自定义按钮 -->
+      <label for="multiFileInput" class="custom-file-label">Choose File</label>
+      <input type="file" id="multiFileInput" />
+      
+      <!-- 显示文件名的 span -->
+      <span id="fileNameDisplay">No file chosen <br><br> </span>
+      <button onclick="predictAndDownload()">Predict and Download</button>
+    </div>
+
+    <!-- 添加在 JSME 编辑器上方或下方 -->
+    <!-- <div class="card">
+      <h2>分子模板</h2>
+      <div>
+        <button onclick="loadTemplate('OC1=C(C2=NC=CC=C2C=C3)C3=CC=C1')">HBQ</button>
+        <button onclick="loadTemplate('O=C1C2=C(C=CC=C2O)C(C3=CC=CC=C31)=O')">HAQ</button>
+        <button onclick="loadTemplate('OC1=C(C2=CC=CC=C2)OC3=C(C1=O)C=CC=C3')">3HF</button>
+        <button onclick="loadTemplate('OC1=CC=CC=C1C2=NC3=CC=CC=C3O2')">HBO</button>
+        <button onclick="loadTemplate('OC1=CC=CC=C1C2=NC3=CC=CC=C3N2')">HBI</button>
+        <button onclick="loadTemplate('OC1=CC=CC=C1C2=NC3=CC=CC=C3S2')">HBT</button>
+      </div>
+    </div> -->
+
+    <div class="card">
+      <h2>Edit ESIPT molecules using JSME</h2>
+
+      <h3>Preload ESIPT scaffolds into JSME for convenient access and editing</h3>
+        <div class="template-grid" style="margin-bottom: 40px;">
+          <img src="images/HBQ.jpg" onclick="loadTemplate('OC1=C(C2=NC=CC=C2C=C3)C3=CC=C1')" alt="HBQ">
+          <img src="images/HAQ.jpg" onclick="loadTemplate('O=C1C2=C(C=CC=C2O)C(C3=CC=CC=C31)=O')" alt="HAQ">
+          <img src="images/3HF.jpg" onclick="loadTemplate('OC1=C(C2=CC=CC=C2)OC3=C(C1=O)C=CC=C3')" alt="3HF">
+          <img src="images/HBO.jpg" onclick="loadTemplate('Oc1ccccc1c2oc3ccccc3n2')" alt="HBO">
+          <img src="images/HBI.jpg" onclick="loadTemplate('OC1=CC=CC=C1C2=NC3=CC=CC=C3N2')" alt="HBI">
+          <img src="images/HBT.jpg" onclick="loadTemplate('Oc1ccccc1c2sc3ccccc3n2')" alt="HBT">
+        </div>
+      <div id="jsme_container" style="width: 100%; height: 300px;"></div>
+      <button onclick="predictFromEditor()">predict</button>
+    </div>
+
+    <div class="result" id="resultBox"></div>
+
+  </div>
+
+  <script>
+    let jsmeApplet;
+    function jsmeOnLoad() {
+      jsmeApplet = new JSApplet.JSME("jsme_container", "600px", "300px");
+    }
+
+    async function predictFromEditor() {
+      const smiles = jsmeApplet.smiles();
+      const res = await fetch("http://localhost:5000/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smiles })
+      });
+      const data = await res.json();
+      document.getElementById("resultBox").innerText =
+        data.prediction ? `Predicted ΔE*: ${Number(data.prediction).toFixed(2)} kcal/mol` : `Error: ${data.error}`;
+    }
+
+    async function predictAndDownload() {
+      const input = document.getElementById("multiFileInput");
+      const file = input.files[0];
+      if (!file) {
+        alert("please chosse a file including smiles");
+        return;
+      }
+
+      const text = await file.text();
+      const smilesList = text.split("\n").map(s => s.trim()).filter(s => s);
+
+      const res = await fetch("http://localhost:5000/predict/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smiles_list: smilesList })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert("Error: " + err.error);
+        return;
+      }
+
+      // 文件下载处理
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "predictions.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    }
+
+    async function loadTemplate(smiles) {
+      const res = await fetch("http://localhost:5000/molfile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ smiles })
+      });
+      const data = await res.json();
+      if (data.molfile) {
+        jsmeApplet.readMolFile(data.molfile);
+      } else {
+        alert("转换失败: " + data.error);
+      }
+    }
+
+    document.getElementById('multiFileInput').addEventListener('change', function () {
+        const fileInput = this;
+        const fileName = fileInput.files.length > 0 ? fileInput.files[0].name : 'No file chosen';
+        document.getElementById('fileNameDisplay').textContent = fileName;
+      });
+  </script>
+</body>
+</html>
