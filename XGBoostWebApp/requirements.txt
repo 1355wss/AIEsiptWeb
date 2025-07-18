@@ -1,6 +1,6 @@
 flask
 flask-cors
+numpy==1.26
 xgboost
 rdkit-pypi
-numpy
 pandas
