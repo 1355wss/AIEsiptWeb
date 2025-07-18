@@ -1,0 +1,6 @@
+flask
+flask-cors
+xgboost
+rdkit-pypi
+numpy
+pandas
